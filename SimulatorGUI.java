@@ -1,11 +1,8 @@
 package org.example.View;
 
 import org.example.Controller.MemoryController;
-import org.example.Model.FIFOReplacement;
-import org.example.Model.Frame;
-import org.example.Model.LRUReplacement;
-import org.example.Model.PageReplacementAlgorithm;
 import org.example.Model.*;
+import org.example.Model.Frame;
 
 import javax.swing.*;
 import java.awt.*;
@@ -46,7 +43,8 @@ public class SimulatorGUI extends JFrame {
         JPanel centerPanel = new JPanel(new BorderLayout());
         memoryPanel = new MemoryPanel();
         centerPanel.add(memoryPanel, BorderLayout.CENTER);
-        centerPanel.setPreferredSize(new Dimension((int) (Toolkit.getDefaultToolkit().getScreenSize().getWidth() * 0.6),
+        centerPanel.setPreferredSize(new Dimension(
+                (int) (Toolkit.getDefaultToolkit().getScreenSize().getWidth() * 0.6),
                 (int) Toolkit.getDefaultToolkit().getScreenSize().getHeight())); // Extend memory panel width
         mainPanel.add(centerPanel, BorderLayout.CENTER);
 
@@ -81,7 +79,7 @@ public class SimulatorGUI extends JFrame {
 
         // Attach functionality for load instructions
         loadInstructionPanel.setGenerateRandomFunction(() -> loadInstructionPanel.generateRandomLoad(memoryController));
-        loadInstructionPanel.setSubmitFunction(() -> loadInstructionPanel.handleLoadSubmit(memoryController, eventLogPanel));
+        loadInstructionPanel.setSubmitFunction(this::handleInstructionSubmission);
     }
 
     private void handleSimulationSetup() {
@@ -99,7 +97,7 @@ public class SimulatorGUI extends JFrame {
                 default -> throw new IllegalArgumentException("Invalid algorithm selected.");
             };
 
-            // Perform calculations
+            // Calculate offsets and table sizes
             int offsetBits = 2; // Fixed value since we're dividing by 2^2
             int physicalPageRows = physicalMemorySize / (int) Math.pow(2, offsetBits); // Divide by 2^2
             int pageTableRows = virtualMemorySize / 4; // Virtual Memory Size divided by Page Size (4)
@@ -109,6 +107,7 @@ public class SimulatorGUI extends JFrame {
             eventLogPanel.appendLog("Page Table Rows = " + virtualMemorySize + " / 4 = " + pageTableRows + " rows\n");
             eventLogPanel.appendLog("TLB Rows = " + tlbEntries + " rows\n");
 
+            // Initialize Memory Controller
             memoryController = new MemoryController(
                     virtualMemorySize,         // Virtual Memory Size
                     physicalMemorySize,        // Physical Memory Size
@@ -117,25 +116,8 @@ public class SimulatorGUI extends JFrame {
                     eventLogPanel              // Pass the EventLogPanel instance for logging
             );
 
-            // Update TLB table (initialize with empty data)
-            memoryPanel.updateTLBEntries(new String[tlbEntries], new String[tlbEntries]);
-
-            // Populate Page Table
-            String[][] pageTableData = new String[pageTableRows][3]; // Columns: Index, Valid, Physical Page#
-            for (int i = 0; i < pageTableRows; i++) {
-                pageTableData[i][0] = String.valueOf(i); // Index
-                pageTableData[i][1] = "0"; // Valid bit (0 = not loaded initially)
-                pageTableData[i][2] = "-"; // No physical page assigned initially
-            }
-            memoryPanel.updatePageTable(pageTableData);
-
-            // Populate Physical Memory
-            String[][] physicalMemoryData = new String[physicalPageRows][2]; // Columns: Physical Page#, Content
-            for (int i = 0; i < physicalPageRows; i++) {
-                physicalMemoryData[i][0] = String.valueOf(i); // Physical Page#
-                physicalMemoryData[i][1] = "-"; // Empty content initially
-            }
-            memoryPanel.updatePhysicalMemory(physicalMemoryData);
+            // Initialize GUI tables
+            initializeMemoryPanel(physicalPageRows, pageTableRows, tlbEntries);
 
             // Update the Statistics Panel
             statusPanel.updateStatistics(memoryController);
@@ -150,14 +132,42 @@ public class SimulatorGUI extends JFrame {
         }
     }
 
+    private void initializeMemoryPanel(int physicalPageRows, int pageTableRows, int tlbEntries) {
+        // Initialize TLB
+        Object[][] tlbData = new Object[tlbEntries][3];
+        for (int i = 0; i < tlbEntries; i++) {
+            tlbData[i][0] = i; // Entry #
+            tlbData[i][1] = null; // Virtual Page#
+            tlbData[i][2] = null; // Physical Page#
+        }
+        memoryPanel.updateTLBEntries(tlbData);
+
+        // Initialize Page Table
+        Object[][] pageTableData = new Object[pageTableRows][3];
+        for (int i = 0; i < pageTableRows; i++) {
+            pageTableData[i][0] = i; // Index
+            pageTableData[i][1] = "0"; // Valid bit
+            pageTableData[i][2] = "-"; // No physical page
+        }
+        memoryPanel.updatePageTable(pageTableData);
+
+        // Initialize Physical Memory
+        Object[][] physicalMemoryData = new Object[physicalPageRows][2];
+        for (int i = 0; i < physicalPageRows; i++) {
+            physicalMemoryData[i][0] = i; // Physical Page#
+            physicalMemoryData[i][1] = "Empty"; // No data
+        }
+        memoryPanel.updatePhysicalMemory(physicalMemoryData);
+    }
+
     private void resetSimulation() {
         // Clear memory controller
         memoryController = null;
 
         // Clear memory visualization
-        memoryPanel.updateTLBEntries(new String[0], new String[0]); // Clear TLB table
-        memoryPanel.updatePageTable(new String[0][0]); // Clear Page Table
-        memoryPanel.updatePhysicalMemory(new String[0][0]); // Clear Physical Memory
+        memoryPanel.updateTLBEntries(new Object[0][3]); // Clear TLB
+        memoryPanel.updatePageTable(new Object[0][3]); // Clear Page Table
+        memoryPanel.updatePhysicalMemory(new Object[0][2]); // Clear Physical Memory
 
         // Reset statistics panel
         statusPanel.updateStatistics(null); // Pass null to reset statistics safely
@@ -167,70 +177,57 @@ public class SimulatorGUI extends JFrame {
         eventLogPanel.appendLog("Simulation reset.\n");
     }
 
-    // Refresh all memory visualization tables (TLB, Page Table, Physical Memory)
-    public void refreshTables() {
+    private void refreshTables() {
         if (memoryController == null) return;
 
         // Refresh TLB Table
         Map<Integer, Integer> tlbEntries = memoryController.getTLBEntries();
-        String[][] tlbData = new String[tlbEntries.size()][2];
+        Object[][] tlbData = new Object[tlbEntries.size()][3];
         int index = 0;
         for (Map.Entry<Integer, Integer> entry : tlbEntries.entrySet()) {
-            tlbData[index][0] = String.valueOf(entry.getKey()); // Virtual Page#
-            tlbData[index][1] = String.valueOf(entry.getValue()); // Physical Page#
+            tlbData[index][0] = index; // Entry #
+            tlbData[index][1] = entry.getKey(); // Virtual Page#
+            tlbData[index][2] = entry.getValue(); // Physical Page#
             index++;
         }
         memoryPanel.updateTLBEntries(tlbData);
 
         // Refresh Page Table
         Map<Integer, Integer> pageTableEntries = memoryController.getPageTableMap();
-        String[][] pageTableData = new String[pageTableEntries.size()][3];
+        Object[][] pageTableData = new Object[pageTableEntries.size()][3];
         index = 0;
         for (Map.Entry<Integer, Integer> entry : pageTableEntries.entrySet()) {
-            pageTableData[index][0] = String.valueOf(entry.getKey()); // Index
+            pageTableData[index][0] = entry.getKey(); // Index
             pageTableData[index][1] = entry.getValue() != -1 ? "1" : "0"; // Valid Bit
-            pageTableData[index][2] = entry.getValue() != -1 ? String.valueOf(entry.getValue()) : "-"; // Physical Page#
+            pageTableData[index][2] = entry.getValue() != -1 ? entry.getValue().toString() : "-"; // Physical Page#
             index++;
         }
         memoryPanel.updatePageTable(pageTableData);
 
-        // Refresh Physical Memory Table
-        List<Frame> frames = memoryController.getPhysicalMemoryFrames(); // Retrieve all frames
-        String[][] physicalMemoryData = new String[frames.size()][2]; // Two columns: Physical Page# and Content
-
+        // Refresh Physical Memory
+        List<Frame> frames = memoryController.getPhysicalMemoryFrames();
+        Object[][] physicalMemoryData = new Object[frames.size()][2];
         for (int i = 0; i < frames.size(); i++) {
-            Frame frame = frames.get(i); // Get the current frame
-            physicalMemoryData[i][0] = String.valueOf(frame.getFrameNumber()); // Physical Page#
-            physicalMemoryData[i][1] = frame.isEmpty() ? "-" : "Page " + frame.getLoadedPage().getPageNumber(); // Content
+            Frame frame = frames.get(i);
+            physicalMemoryData[i][0] = frame.getFrameNumber();
+            physicalMemoryData[i][1] = frame.isEmpty() ? "Empty" : "Page " + frame.getLoadedPage().getPageNumber();
         }
-
-// Update the Physical Memory table in the GUI
-        memoryPanel.updatePhysicalMemory(physicalMemoryData);
-
-
-// Update the Physical Memory table in the GUI
-        memoryPanel.updatePhysicalMemory(physicalMemoryData);
-
-        memoryPanel.updatePhysicalMemory(physicalMemoryData);
-
         memoryPanel.updatePhysicalMemory(physicalMemoryData);
     }
 
-    // Handle the submission of instructions and refresh tables
-    public void handleInstructionSubmission() {
+    private void handleInstructionSubmission() {
         if (memoryController == null) {
             JOptionPane.showMessageDialog(this, "Please initialize the simulation first.", "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
 
-        // Process instructions using the LoadInstructionPanel
+        // Process instructions
         loadInstructionPanel.handleLoadSubmit(memoryController, eventLogPanel);
 
-        // Refresh all tables to reflect updated memory state
+        // Refresh tables
         refreshTables();
 
-        // Update statistics in the Status Panel
+        // Update statistics
         statusPanel.updateStatistics(memoryController);
     }
-
 }

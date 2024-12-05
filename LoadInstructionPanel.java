@@ -4,6 +4,7 @@ import org.example.Controller.MemoryController;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.Arrays;
 import java.util.Random;
 
 public class LoadInstructionPanel extends JPanel {
@@ -34,7 +35,10 @@ public class LoadInstructionPanel extends JPanel {
         add(submitButton);
     }
 
-    // Generate Random Address and Instructions
+    /**
+     * Generate random load instructions and update the fields.
+     * @param memoryController The memory controller for simulation.
+     */
     public void generateRandomLoad(MemoryController memoryController) {
         if (memoryController == null) {
             JOptionPane.showMessageDialog(this, "Please initialize the simulation first.", "Error", JOptionPane.ERROR_MESSAGE);
@@ -44,7 +48,7 @@ public class LoadInstructionPanel extends JPanel {
         int virtualMemorySize = memoryController.getVirtualMemory().getSize();
         Random random = new Random();
 
-        // Generate a single random address within the valid range
+        // Generate a random load address within the valid range
         int randomAddress = random.nextInt(virtualMemorySize);
         loadAddressField.setText(Integer.toHexString(randomAddress).toUpperCase());
 
@@ -62,7 +66,12 @@ public class LoadInstructionPanel extends JPanel {
         loadDataField.setText(instructionList.toString());
     }
 
-    // Handle Load Submission
+    /**
+     * Handle the submission of load instructions.
+     * Parses the data, validates the input, and sends it to the memory controller.
+     * @param memoryController The memory controller for processing the load instruction.
+     * @param eventLogPanel The panel to log events.
+     */
     public void handleLoadSubmit(MemoryController memoryController, EventLogPanel eventLogPanel) {
         if (memoryController == null) {
             JOptionPane.showMessageDialog(this, "Please initialize the simulation first.", "Error", JOptionPane.ERROR_MESSAGE);
@@ -70,22 +79,57 @@ public class LoadInstructionPanel extends JPanel {
         }
 
         try {
-            int address = Integer.parseInt(loadAddressField.getText(), 16); // Convert Hex to Decimal
-            String data = loadDataField.getText();
+            // Validate and parse the load address
+            String addressText = loadAddressField.getText();
+            if (addressText == null || addressText.trim().isEmpty()) {
+                throw new IllegalArgumentException("Load address cannot be empty.");
+            }
+            int address = Integer.parseInt(addressText.trim(), 16); // Convert Hex to Decimal
 
-            memoryController.loadInstruction(address, data); // Load instruction to memory
-            eventLogPanel.appendLog("Loaded address " + loadAddressField.getText() + " with data: " + data + "\n");
+            // Validate and parse the instruction list
+            String data = loadDataField.getText();
+            if (data == null || data.trim().isEmpty()) {
+                throw new IllegalArgumentException("Instruction list cannot be empty.");
+            }
+
+            String[] instructions = data.split(",");
+            if (instructions.length != 10) {
+                throw new IllegalArgumentException("Instruction list must contain exactly 10 instructions.");
+            }
+
+            // Validate each instruction
+            for (String instruction : instructions) {
+                if (instruction.trim().isEmpty()) {
+                    throw new IllegalArgumentException("Instruction list contains an invalid (empty) instruction.");
+                }
+                Integer.parseInt(instruction.trim(), 16); // Validate as a hexadecimal number
+            }
+
+            // Submit the parsed data to the memory controller
+            memoryController.loadInstruction(address, Arrays.toString(instructions));
+
+            // Log the successful submission
+            eventLogPanel.appendLog("Loaded address " + addressText + " with data: " + data + "\n");
+
         } catch (NumberFormatException ex) {
-            JOptionPane.showMessageDialog(this, "Invalid address format. Please use a valid hexadecimal value.", "Input Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Invalid address or instruction format. Use valid hexadecimal values.", "Input Error", JOptionPane.ERROR_MESSAGE);
+        } catch (IllegalArgumentException ex) {
+            JOptionPane.showMessageDialog(this, ex.getMessage(), "Input Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    // Set Functionality for Generate Random Button
+    /**
+     * Set functionality for the "Generate Random" button.
+     * @param function The function to execute when the button is clicked.
+     */
     public void setGenerateRandomFunction(Runnable function) {
         generateRandomButton.addActionListener(e -> function.run());
     }
 
-    // Set Functionality for Submit Button
+    /**
+     * Set functionality for the "Submit" button.
+     * @param function The function to execute when the button is clicked.
+     */
     public void setSubmitFunction(Runnable function) {
         submitButton.addActionListener(e -> function.run());
     }
